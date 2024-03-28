@@ -1,25 +1,30 @@
 (async () => {
+    const baseArchivePdfUrl = "https://www.archivepdf.net"
+    const betaArchivePdfUrl = "https://beta.archivepdf.net"
+    if (window.location.origin !== baseArchivePdfUrl) {
+        if (window.location.origin === betaArchivePdfUrl) {
+            alert("This bookmarklet does not currently support beta version of site");
+        } else {
+            alert("This bookmarklet is designed to be used with ArchivePdf");
+        }
+        return
+    }
+
     define = undefined;
     exports = undefined;
     if (window.module) module.exports = undefined;
-    // ↑ required for archivepdf.net
 
+    // ↑ required for archivepdf.net
     var script= document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
     document.body.appendChild(script);
-
-    const BASE_ARCHIVE_PDF_URL = "https://www.archivepdf.net"
-    if (window.location.origin !== BASE_ARCHIVE_PDF_URL) {
-        alert("This bookmarklet is designed to be used with ArchivePdf");
-        return;
-    };
 
     const fashionScanRegex = /[a-z0-9-]+-[a-z0-9]+/;
     const scanId = window.location.pathname.replace("/", "")
     if (fashionScanRegex.exec(scanId) == null) {
         alert("No fashion ID could be found, are you in a fashion scan?");
         return;
-    };
+    }
 
     if (document.getElementById("wix-warmup-data") == null) {
         alert("Seems like you are still not on fashion scan page")
@@ -60,7 +65,7 @@
 
     async function getChunk(galleryId, offset, limit) {
         try {
-            const response = await fetch(`${BASE_ARCHIVE_PDF_URL}/pro-gallery-webapp/v1/galleries/${galleryId}?` + new URLSearchParams({
+            const response = await fetch(`${baseArchivePdfUrl}/pro-gallery-webapp/v1/galleries/${galleryId}?` + new URLSearchParams({
                 offset: offset,
                 limit: limit,
                 state: "PUBLISHED",
@@ -82,6 +87,20 @@
         }
     }
 
+    const CHUNK_LIMIT = 200 // max limit
+    let tasks = []
+    for (let i = 0; i < Math.ceil((totalItemsCount - baseImages.length) / CHUNK_LIMIT); i++) {
+        let offset = CHUNK_LIMIT * i + baseImages.length
+        tasks.push(getChunk(galleryId, offset, CHUNK_LIMIT))
+    }
+    let images = (await Promise.all(tasks)).flat(1)
+    images = [...baseImages, ...images]
+
+    const downloadConfirm = confirm(`Current scan consist of ${images.length} images. Are you sure you want to download it as .pdf file?`);
+    if (!downloadConfirm) {
+        return;
+    }
+
     async function getImageBytes(imageUrl) {
         try {
             const response = await fetch(imageUrl);
@@ -97,20 +116,6 @@
             return null;
         }
     }
-
-    const CHUNK_LIMIT = 200 // max limit
-    let tasks = []
-    for (let i = 0; i < Math.ceil((totalItemsCount - baseImages.length) / CHUNK_LIMIT); i++) {
-        let offset = CHUNK_LIMIT * i + baseImages.length
-        tasks.push(getChunk(galleryId, offset, CHUNK_LIMIT))
-    }
-    let images = (await Promise.all(tasks)).flat(1)
-    images = [...baseImages, ...images]
-
-    const downloadConfirm = confirm(`Current scan consist of ${images.length} images. Are you sure you want to download it as .pdf file?`);
-    if (!downloadConfirm) {
-        return;
-    };
 
     console.log('Starting downloading images...')
     const imageBytePromises = images.map(getImageBytes);
